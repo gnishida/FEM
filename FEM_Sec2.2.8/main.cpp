@@ -4,24 +4,45 @@
 
 using namespace std;
 
-void datain2(int& N, vector<double>& coords, vector<pair<int, int>>& lnods) {
-	ifstream in("temp.dat");
+void datain3(int& N, vector<double>& coords, vector<pair<int, int>>& lnods, vector<int>& given_indices, vector<int>& given_nonzero_indices, vector<double>& given_nonzero_values, int icase) {
+	ifstream in;
+	if (icase == 1) {
+		in.open("case1.dat");
+	}
+	else if (icase == 2) {
+		in.open("case2.dat");
+	}
 	in >> N;
 
 	// read coords
 	for (int i = 0; i < N; ++i) {
-		int line_no;
+		int node_id;
+		int given;
 		double coord;
-		in >> line_no >> coord;
+		in >> node_id >> given >> coord;
+		if (given == 1) {
+			given_indices.push_back(node_id - 1);
+		}
 		coords.push_back(coord);
 	}
 
 	in >> N;
 	for (int i = 0; i < N; ++i) {
-		int line_no;
+		int node_id;
 		int idx1, idx2;
-		in >> line_no >> idx1 >> idx2;
+		in >> node_id >> idx1 >> idx2;
 		lnods.push_back(make_pair(idx1 - 1, idx2 - 1));
+	}
+
+	int num;
+	in >> num;
+	for (int i = 0; i < num; ++i) {
+		int line_no;
+		int node_id;
+		double value;
+		in >> line_no >> node_id >> value;
+		given_nonzero_indices.push_back(node_id - 1);
+		given_nonzero_values.push_back(value);
 	}
 }
 
@@ -61,12 +82,20 @@ void bc2(int N, vector<int>& given_indices) {
 /**
 * 解析的に解いた答えを表示する
 */
-void check_solution2(cv::Mat_<double>& B, int N, vector<double> coords) {
+void check_solution3(cv::Mat_<double>& B, int N, vector<double> coords, int icase) {
 	printf(" FEM result | True value\n");
 	printf("------------+------------\n");
 	for (int i = 0; i <= N; ++i) {
 		double x = coords[i];
-		printf(" %10.3E | %10.3E\n", B(i, 0), 0.5*(x - x*x));
+		double u;
+
+		if (icase == 1) {
+			u = -0.5 * x*x - 0.5 * x + 1.0;
+		}
+		else if (icase == 2) {
+			u = -0.5 * x*x + 1.5 * x + 1.0;
+		}
+		printf(" %10.3E | %10.3E\n", B(i, 0), u);
 	}
 }
 
@@ -97,28 +126,29 @@ void bound2(cv::Mat_<double>& A, cv::Mat_<double>& C, vector<int>& given_indices
 }
 
 int main() {
+	const int icase = 2;
+
 	int N;
 	vector<double> coords;
 	vector<pair<int, int>> lnods;
+	vector<int> given_indices;
+	vector<int> given_nonzero_indices;
+	vector<double> given_nonzero_values;
 
-	datain2(N, coords, lnods);
+	datain3(N, coords, lnods, given_indices, given_nonzero_indices, given_nonzero_values, icase);
 
 	cv::Mat_<double> A;
 	cv::Mat_<double> B;
 
 	stiff2(A, B, N, coords, lnods);
-
-	vector<int> given_indices;
-	vector<int> given_nonzero_indices;
-	vector<double> given_nonzero_values;
-
+	
 	bc2(N, given_indices);
 
 	bound2(A, B, given_indices, given_nonzero_indices, given_nonzero_values);
 
 	cv::Mat_<double> U = A.inv() * B;
 
-	check_solution2(U, N, coords);
+	check_solution3(U, N, coords, icase);
 
 	return 0;
 }
