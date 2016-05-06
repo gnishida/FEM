@@ -19,7 +19,7 @@ void datain5(int& N, vector<double>& coords, vector<vector<int>>& lnods, vector<
 	for (int i = 0; i < N; ++i) {
 		int node_id;
 		int given;
-		double coord;
+
 		in >> node_id >> given >> coords[i];
 		if (given == 1) {
 			given_indices.push_back(node_id - 1);
@@ -139,15 +139,6 @@ void stiff5(cv::Mat_<double>& A, cv::Mat_<double>& B, int N, vector<double> coor
 }
 
 /**
-* 境界条件
-* u1=u_N=0
-*/
-void bc2(int N, vector<int>& given_indices) {
-	given_indices.push_back(0);
-	given_indices.push_back(N);
-}
-
-/**
 * 解析的に解いた答えを表示する
 */
 void check_solution3(cv::Mat_<double>& B, int N, vector<double> coords, int icase) {
@@ -210,8 +201,6 @@ int main() {
 	cv::Mat_<double> B;
 
 	stiff5(A, B, N, coords, lnods, nint);
-
-	bc2(N, given_indices);
 
 	bound2(A, B, given_indices, given_nonzero_indices, given_nonzero_values);
 

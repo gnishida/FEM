@@ -1,39 +1,54 @@
-﻿#include <iostream>
+﻿/**
+ * テキスト p. 157
+ * バージョン6  2次の補間関数
+ */
+
+#include <iostream>
 #include <fstream>
 #include <opencv/cv.h>
 
 using namespace std;
 
-void datain5(int& N, vector<double>& coords, vector<vector<int>>& lnods, vector<int>& given_indices, vector<int>& given_nonzero_indices, vector<double>& given_nonzero_values, int icase, int& nint) {
+void datain6(int& nnode, int& nelem, vector<double>& coords, vector<vector<int>>& lnods, vector<int>& given_indices, vector<int>& given_nonzero_indices, vector<double>& given_nonzero_values, int icase, int& nint, vector<int>& ntnoel) {
 	ifstream in;
-	if (icase == 1) {
-		in.open("case1.dat");
+	if (icase == 11) {
+		in.open("case11.dat");
 	}
-	else if (icase == 2) {
-		in.open("case2.dat");
+	else if (icase == 12) {
+		in.open("case12.dat");
 	}
-	in >> N;
+	else if (icase == 21) {
+		in.open("case21.dat");
+	}
+	else if (icase == 22) {
+		in.open("case22.dat");
+	}
+	in >> nnode;
 
 	// read coords
-	coords.resize(N);
-	for (int i = 0; i < N; ++i) {
+	coords.resize(nnode);
+	for (int i = 0; i < nnode; ++i) {
 		int node_id;
 		int given;
-		double coord;
+
 		in >> node_id >> given >> coords[i];
 		if (given == 1) {
 			given_indices.push_back(node_id - 1);
 		}
 	}
 
-	in >> N;
-	lnods.resize(N);
-	for (int i = 0; i < N; ++i) {
+	in >> nelem;
+	lnods.resize(nelem);
+	ntnoel.resize(nelem);
+	for (int ielem = 0; ielem < nelem; ++ielem) {
 		int node_id;
-		int idx1, idx2;
-		in >> node_id >> idx1 >> idx2;
-		lnods[i].push_back(idx1 - 1);
-		lnods[i].push_back(idx2 - 1);
+		in >> node_id >> ntnoel[ielem];
+
+		for (int i = 0; i < ntnoel[ielem]; ++i) {
+			int idx;
+			in >> idx;
+			lnods[ielem].push_back(idx - 1);
+		}
 	}
 
 	int num;
@@ -54,11 +69,11 @@ void datain5(int& N, vector<double>& coords, vector<vector<int>>& lnods, vector<
 * 要素マトリックスを作成する。
 *
 * @param coords	各ノードの座標
-* @param lnods		ノードの接続（lnods[0]とlnods[1]）を表す
+* @param lnods	ノードの接続（lnods[0]とlnods[1]）を表す
 * @param astiff	要素マトリックス
-* @param nint		数値積分の区分数
+* @param nint	数値積分の区分数
 */
-void element(vector<double> coords, vector<int> lnods, cv::Mat_<double>& astiff, int nint) {
+void element(vector<double> coords, vector<int> lnods, cv::Mat_<double>& astiff, int nint, int ntnoel) {
 	double gsp[][4] = {
 			{ 0.0, 0.0, 0.0, 0.0 },
 			{ -0.577350269189626, 0.577350269189626, 0.0, 0.0 },
@@ -72,32 +87,63 @@ void element(vector<double> coords, vector<int> lnods, cv::Mat_<double>& astiff,
 			{ 0.347854845137454, 0.652145154862546, 0.652145154862546, 0.347854845137454 }
 	};
 
-	astiff = cv::Mat_<double>(2, 2, 0.0);
+	astiff = cv::Mat_<double>(ntnoel, ntnoel, 0.0);
 
 	for (int ir = 0; ir < nint; ++ir) {
 		double r = gsp[nint - 1][ir];
-		double dndr[2];
-		dndr[0] = -0.5;
-		dndr[1] = 0.5;
 
+		vector<double> dndr(ntnoel);
+		if (ntnoel == 2) {
+			dndr[0] = -0.5;
+			dndr[1] = 0.5;
+		}
+		else if (ntnoel == 3) {
+			dndr[0] = r - 0.5;
+			dndr[1] = r + 0.5;
+			dndr[2] = -2.0 * r;
+		}
+		
 		double ajacob = 0.0;
-		for (int i = 0; i < 2; ++i) {
+		
+		for (int i = 0; i < ntnoel; ++i) {
 			ajacob += dndr[i] * coords[lnods[i]];
 		}
 		double detjac = ajacob;
 		double ajainv = 1.0 / ajacob;
 
-		double dndx[2];
-		for (int i = 0; i < 2; ++i) {
+		vector<double> dndx(ntnoel);
+		for (int i = 0; i < ntnoel; ++i) {
 			dndx[i] = dndr[i] * ajainv;
 		}
 
 		double detwei = detjac * wgh[nint - 1][ir];
 
-		for (int i = 0; i < 2; ++i) {
-			for (int j = 0; j < 2; ++j) {
+		for (int i = 0; i < ntnoel; ++i) {
+			for (int j = 0; j < ntnoel; ++j) {
 				astiff(j, i) += detwei * dndx[i] * dndx[j];
 			}
+		}
+	}
+}
+
+/**
+ * 要素マトリックスを全体マトリックスへマージする
+ *
+ * @param A			全体マトリックス
+ * @param lnods		ノードの接続
+ * @param astiff	要素マトリックス
+ * @param ntnoel	区間のノード数
+ */
+void merge(cv::Mat_<double>& A, vector<int> lnods, cv::Mat_<double> astiff, int ntnoel) {
+	vector<int> ip(ntnoel);
+
+	for (int i = 0; i < ntnoel; ++i) {
+		ip[i] = lnods[i];
+	}
+
+	for (int j = 0; j < ntnoel; ++j) {
+		for (int i = 0; i < ntnoel; ++i) {
+			A(ip[i], ip[j]) += astiff(i, j);
 		}
 	}
 }
@@ -107,60 +153,65 @@ void element(vector<double> coords, vector<int> lnods, cv::Mat_<double>& astiff,
 *
 * @param A		剛性マトリックス（4x4の正方対象行列）
 * @param B		線型方程式の右辺
-* @param N		マトリックスのサイズ-1
+* @param nnode	マトリックスのサイズ
+* @param coords	ノードの座標
+* @param nelem	要素の数
+* @param lnods	要素の接続を表す
+* @param nint	数値積分のためのサンプリング点数
+* @param ntnoel	各区間のノード数
 */
-void stiff5(cv::Mat_<double>& A, cv::Mat_<double>& B, int N, vector<double> coords, vector<vector<int>> lnods, int nint) {
-	A = cv::Mat_<double>(N + 1, N + 1, 0.0);
-	B = cv::Mat_<double>(N + 1, 1, 0.0);
+void stiff6(cv::Mat_<double>& A, cv::Mat_<double>& B, int nnode, vector<double> coords, int nelem, vector<vector<int>> lnods, int nint, vector<int> ntnoel) {
+	A = cv::Mat_<double>(nnode, nnode, 0.0);
+	B = cv::Mat_<double>(nnode, 1, 0.0);
 
 	cv::Mat_<double> astiff = cv::Mat_<double>(2, 2, 0.0);
-	cv::Mat_<double> c = cv::Mat_<double>(2, 1, 0.0);
+	cv::Mat_<double> c;
 
-	for (int i = 0; i < N; ++i) {
+	for (int ielem = 0; ielem < nelem; ++ielem) {
 		// 要素マトリックスを作成
-		element(coords, lnods[i], astiff, nint);
+		element(coords, lnods[ielem], astiff, nint, ntnoel[ielem]);
 
-		double x = coords[lnods[i][1]] - coords[lnods[i][0]];
+		// 全体マトリックスへマージ
+		merge(A, lnods[ielem], astiff, ntnoel[ielem]);
 
-		c(0, 0) = x / 2.0;
-		c(1, 0) = x / 2.0;
+		vector<int> ip(ntnoel[ielem]);
+		for (int i = 0; i < ntnoel[ielem]; ++i) {
+			ip[i] = lnods[ielem][i];
+		}
 
-		int ip1 = lnods[i][0];
-		int ip2 = lnods[i][1];
+		double x = coords[lnods[ielem][1]] - coords[lnods[ielem][0]];
+		if (ntnoel[ielem] == 2) {		// 1次補間
+			c = cv::Mat_<double>(2, 1, 0.0);
+			c(0, 0) = x / 2.0;
+			c(1, 0) = x / 2.0;
+		}
+		else if (ntnoel[ielem] == 3) {	// 2次補間
+			c = cv::Mat_<double>(3, 1, 0.0);
+			c(0, 0) = x / 6.0;
+			c(1, 0) = x / 6.0;
+			c(2, 0) = x * 2.0 / 3.0;
+		}
 
-		// 全体マトリックスへマージする
-		A(ip1, ip1) += astiff(0, 0);
-		A(ip2, ip2) += astiff(1, 1);
-		A(ip1, ip2) += astiff(0, 1);
-		A(ip2, ip1) += astiff(1, 0);
-		B(ip1, 0) += c(0, 0);
-		B(ip2, 0) += c(1, 0);
+		for (int i = 0; i < ntnoel[ielem]; ++i) {
+			B(ip[i], 0) += c(i, 0);
+		}
 	}
-}
-
-/**
-* 境界条件
-* u1=u_N=0
-*/
-void bc2(int N, vector<int>& given_indices) {
-	given_indices.push_back(0);
-	given_indices.push_back(N);
 }
 
 /**
 * 解析的に解いた答えを表示する
 */
-void check_solution3(cv::Mat_<double>& B, int N, vector<double> coords, int icase) {
+void check_solution6(cv::Mat_<double>& B, vector<double> coords, int icase) {
 	printf(" FEM result | True value\n");
 	printf("------------+------------\n");
-	for (int i = 0; i <= N; ++i) {
+	for (int i = 0; i < B.rows; ++i) {
 		double x = coords[i];
 		double u;
 
-		if (icase == 1) {
+		if (icase < 20) {
 			u = -0.5 * x*x - 0.5 * x + 1.0;
 		}
-		else if (icase == 2) {
+		else if (icase > 20) {
 			u = -0.5 * x*x + 1.5 * x + 1.0;
 		}
 		printf(" %10.3E | %10.3E\n", B(i, 0), u);
@@ -194,30 +245,30 @@ void bound2(cv::Mat_<double>& A, cv::Mat_<double>& C, vector<int>& given_indices
 }
 
 int main() {
-	const int icase = 2;
+	const int icase = 22;
 
-	int N;
+	int nnode;
+	int nelem;
 	vector<double> coords;
 	vector<vector<int>> lnods;
 	vector<int> given_indices;
 	vector<int> given_nonzero_indices;
 	vector<double> given_nonzero_values;
 	int nint;
+	vector<int> ntnoel;
 
-	datain5(N, coords, lnods, given_indices, given_nonzero_indices, given_nonzero_values, icase, nint);
+	datain6(nnode, nelem, coords, lnods, given_indices, given_nonzero_indices, given_nonzero_values, icase, nint, ntnoel);
 
 	cv::Mat_<double> A;
 	cv::Mat_<double> B;
 
-	stiff5(A, B, N, coords, lnods, nint);
-
-	bc2(N, given_indices);
+	stiff6(A, B, nnode, coords, nelem, lnods, nint, ntnoel);
 
 	bound2(A, B, given_indices, given_nonzero_indices, given_nonzero_values);
 
 	cv::Mat_<double> U = A.inv() * B;
 
-	check_solution3(U, N, coords, icase);
+	check_solution6(U, coords, icase);
 
 	return 0;
 }
